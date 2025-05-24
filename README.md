@@ -1,376 +1,532 @@
-## Cheshire Cat AI (ccat) Framework and the `cat` Object
+# CheshireCat Framework: Complete Guide to Intervention Points
 
-The Cheshire Cat AI (ccat) is a framework designed to create and manage AI agents. Plugins are a core component, allowing developers to extend the cat's capabilities. The `cat` object is central to plugin development, as it provides access to the AI's internal state, tools, and memory.
+The CheshireCat framework provides a sophisticated system of intervention points (hooks) that allow developers to customize and extend the AI agent's behavior at specific moments in its execution pipeline. This guide explains how to effectively use each intervention point with practical examples and best practices.
 
-### Key Components and Concepts:
+## Overview of Intervention Categories
 
-* **Hooks:** These are specific points in the AI's execution pipeline where a plugin can intervene. They allow you to modify data, trigger actions, or interact with the AI's internal processes.
-* **Tools:** These are functions that the AI can decide to use to perform specific actions, often involving external APIs or data sources.
-* **Rabbit Hole:** This is the component responsible for ingesting and processing documents (text, web pages, etc.) into the AI's memory. It handles chunking, embedding, and storing information.
-* **Memory:** The ccat uses different types of memory:
-    * **Working Memory:** Holds short-term information relevant to the current conversation.
-    * **Declarative Memory (Vector Memory):** Stores factual information and knowledge learned from documents or conversations, typically using vector embeddings for semantic search.
-    * **Procedural Memory:** Stores skills and procedures (though less explicitly detailed in the initial links for plugin interaction in the same way as declarative/working memory).
-* **`cat` object:** This object is passed to plugin hooks and tools. It acts as an interface to the AI's core functionalities.
-
-### Simplified `cat` Object Structure (Conceptual)
-
-Based on the documentation, the `cat` object likely provides access to methods and attributes related to:
-
-* **`cat.llm`**: Interacting with the Large Language Model (e.g., `cat.llm.summmarize_text()`, `cat.llm.chat_completion()`).
-* **`cat.memory`**: Accessing and manipulating the AI's memory.
-    * `cat.memory.vectors`: Interacting with the vector memory (declarative memory).
-        * `cat.memory.vectors.get_declarative_memory_instance()`
-        * `cat.memory.vectors.get_procedural_memory_instance()`
-        * `cat.memory.vectors.get_working_memory_instance()`
-        * Methods to add, search, or delete memories.
-    * `cat.memory.long_term`: Potentially an alias or specific methods for long-term storage.
-* **`cat.working_memory`**: Direct access or methods for the current conversation's context.
-* **`cat.rabbit_hole`**: Interacting with the document ingestion pipeline (e.g., `cat.rabbit_hole.store_file()`, `cat.rabbit_hole.store_url()`).
-* **`cat.mad_hatter`**: Access to settings and configurations.
-* **`cat.wolf_manager`**: Manages underlying services and infrastructure.
-* **`cat.plugins`**: Accessing other plugins or plugin-specific functionalities.
-* **`cat.send_ws_message()`**: Sending messages over WebSocket, often for real-time updates or notifications.
-* **`cat.get_tool_config(tool_name)`**: Retrieving the configuration for a specific tool.
-* **`cat.get_plugin_config(plugin_id)`**: Retrieving the configuration for the current or another plugin.
-
-It's important to note that the exact attributes and methods available on the `cat` object might vary slightly depending on the context (i.e., which hook is being executed) and the ccat version. The documentation provides the most accurate details for specific methods.
+The framework organizes intervention points into five main categories:
+- **Flow**: Core execution pipeline hooks
+- **Agent**: AI agent behavior and prompt management
+- **Rabbit Hole**: Document processing and memory ingestion
+- **Plugin**: Plugin lifecycle management
+- **Factory**: Component configuration and settings
 
 ---
 
-Now, let's outline the document for the IA and junior user.
+## Flow Intervention Points
 
-## Cheshire Cat AI Plugin Development: Functions and the `cat` Object Lifecycle
+Flow points control the main execution pipeline of the CheshireCat system.
 
-**Audience:** AI Language Model, Junior Developer
-**Goal:** Understand ccat plugin functions, see examples of their use, and track how the `cat` object is populated and utilized throughout different stages of the AI's operation.
+### Before Cat Bootstrap
+**Purpose**: Modify or prepare the system before the Cat initializes its core components.
 
----
+**Use Cases**:
+- Custom configuration loading
+- Environment validation
+- Pre-initialization logging
+- Component dependency checks
 
-### 1. Introduction to ccat Plugins
+**Example**:
+```python
+@hook
+def before_cat_bootstrap(cat):
+    # Validate required environment variables
+    if not os.getenv('CUSTOM_API_KEY'):
+        raise ValueError("CUSTOM_API_KEY not found")
+    
+    # Initialize custom logging
+    setup_custom_logger()
+    
+    return cat
+```
 
-Cheshire Cat AI (ccat) plugins extend the core functionalities of the AI. They allow you to customize how the AI processes information, interacts with users, and learns new things. At the heart of plugin development is the `cat` object, which provides access to the AI's brain and tools.
+### After Cat Bootstrap
+**Purpose**: Execute actions after all Cat components are initialized and ready.
 
----
+**Use Cases**:
+- Post-initialization validation
+- Custom component registration
+- System health checks
+- Welcome message preparation
 
-### 2. The `cat` Object: Your Interface to the AI
+**Example**:
+```python
+@hook
+def after_cat_bootstrap(cat):
+    # Verify all components are working
+    cat.memory.working_memory.update({
+        "system_status": "initialized",
+        "startup_time": datetime.now()
+    })
+    
+    return cat
+```
 
-The `cat` object is an instance that gets passed to your plugin's functions (hooks and tools). Think of it as your remote control and information panel for the AI.
+### Before Cat Reads Message
+**Purpose**: Intercept and potentially modify incoming WebSocket messages.
 
-**Key things you can do with `cat`:**
+**Use Cases**:
+- Message validation and sanitization
+- User authentication checks
+- Rate limiting implementation
+- Message preprocessing
 
-* **Access LLM:** Use the Large Language Model for tasks like summarization, translation, or generating text.
-    * *Example:* `cat.llm.chat_completion(prompt="What is the capital of France?")`
-* **Manage Memory:** Read from and write to the AI's working (short-term) and declarative (long-term vector) memory.
-    * *Example (Adding to declarative memory):* `cat.memory.vectors.get_declarative_memory_instance().add_point(text="Paris is the capital of France.", metadata={"source": "plugin_info"})`
-    * *Example (Recalling from declarative memory):* `cat.memory.vectors.get_declarative_memory_instance().recall_memories_from_text(text="capital of France")`
-* **Ingest Information (Rabbit Hole):** Tell the AI to learn from files, web pages, or text.
-    * *Example:* `cat.rabbit_hole.store_url(url="https://en.wikipedia.org/wiki/France")`
-* **Use Tools:** Access built-in or other plugin-defined tools.
-* **Send Messages:** Communicate with the user or other systems.
-    * *Example:* `cat.send_ws_message(content="I've just learned about France from Wikipedia!", msg_type="notification")`
-* **Get Configuration:** Access settings for your plugin or specific tools.
-    * *Example:* `my_api_key = cat.get_plugin_config(plugin_id="my_awesome_plugin")["api_key"]`
+**Example**:
+```python
+@hook
+def before_cat_reads_message(user_message_json, cat):
+    # Add user session info
+    user_message_json["session_id"] = generate_session_id()
+    
+    # Sanitize message content
+    user_message_json["text"] = sanitize_input(user_message_json["text"])
+    
+    return user_message_json
+```
 
----
+### Cat Recall Query
+**Purpose**: Modify the query before it's embedded for memory search.
 
-### 3. Core Plugin Functions: Hooks
+**Use Cases**:
+- Query enhancement and expansion
+- Language normalization
+- Context addition
+- Query preprocessing
 
-Hooks are entry points where your plugin can tap into the AI's lifecycle. The `cat` object is your primary tool within these hooks.
+**Example**:
+```python
+@hook
+def cat_recall_query(user_message, cat):
+    # Add context to improve recall
+    enhanced_query = f"User context: {cat.working_memory.get('user_context', '')} Query: {user_message}"
+    
+    return enhanced_query
+```
 
-Let's look at common hooks and what `cat` might look like or be used for at each stage:
+### Before Cat Recalls Memories
+**Purpose**: Intervene before the system searches through all memory types.
 
-#### A. `agent_init(cat)`
+**Use Cases**:
+- Memory search strategy customization
+- Performance optimization
+- Access control implementation
 
-* **When it runs:** Once, when the ccat agent starts up and loads the plugin.
-* **Purpose:** Initialize your plugin, set up connections, load configurations, or perform one-time setup tasks.
-* **`cat` at this stage:**
-    * `cat` is available with access to core functionalities like `cat.mad_hatter` for settings or `cat.log` for logging.
-    * Memory might be empty or contain data from previous sessions.
-* **Example:**
-    ```python
-    # In your plugin's main.py
-    def agent_init(cat):
-        cat.log("My Awesome Plugin is initializing!")
-        # Potentially load API keys from plugin config
-        config = cat.get_plugin_config(plugin_id="my_awesome_plugin")
-        api_key = config.get("my_api_key")
-        if api_key:
-            cat.log("API Key loaded.")
-        # You could also pre-load some general information into memory if needed
-        # cat.memory.vectors.get_declarative_memory_instance().add_point(text="General knowledge point for my plugin.", metadata={"source": "plugin_init"})
-    ```
-    * **`cat` population change:** No direct change to `cat`'s *structure*, but you *use* `cat` to access configurations or potentially populate memory.
+**Example**:
+```python
+@hook
+def before_cat_recalls_memories(query, cat):
+    # Log memory access for audit
+    log_memory_access(query, cat.user_id)
+    
+    # Modify search parameters based on user type
+    if cat.working_memory.get("user_type") == "premium":
+        cat.memory_config.max_results = 20
+    
+    return query
+```
 
-#### B. `after_cat_bootstrap(cat)`
+### Memory-Specific Recall Hooks
 
-* **When it runs:** After the cat core systems (LLM, memory, etc.) are fully initialized and ready.
-* **Purpose:** Perform setup that depends on the cat's core being fully operational. For example, registering dynamic tools or interacting with the LLM for initial setup.
-* **`cat` at this stage:**
-    * All core components of `cat` (LLM, memory, rabbit\_hole) are fully functional.
-* **Example:**
-    ```python
-    # In your plugin's main.py
-    def after_cat_bootstrap(cat):
-        cat.log("Cat is fully bootstrapped. My plugin can now use the LLM for setup.")
-        summary = cat.llm.summarize_text("This plugin enhances user interaction by providing real-time stock quotes.")
-        cat.memory.vectors.get_declarative_memory_instance().add_point(
-            text=f"Plugin purpose: {summary}",
-            metadata={"source": "plugin_bootstrap_summary"}
-        )
-    ```
-    * **`cat` population change:** Again, no change to `cat`'s structure, but you *use* its fully initialized components. Declarative memory is populated with a summary.
+#### Before Cat Recalls Episodic Memories
+**Purpose**: Control episodic memory (conversation history) retrieval.
 
-#### C. `before_llm_execution(user_message, cat, **kwargs)`
+**Use Cases**:
+- Conversation history filtering
+- Privacy controls
+- Context window management
 
-* **When it runs:** Just before the user's message is sent to the LLM.
-* **Purpose:** Modify the user's message, add context, or inject information.
-* **`cat` at this stage:**
-    * Contains the current state of working memory and access to declarative memory.
-    * `user_message` (string) is the direct input.
-* **Example:**
-    ```python
-    # In your plugin's main.py
-    def before_llm_execution(user_message, cat, **kwargs):
-        # Add context from a specific memory point
-        # relevant_info = cat.memory.vectors.get_declarative_memory_instance().recall_memories_from_text("user preferences")
-        # if relevant_info:
-        #     user_message = f"{user_message} (User preference: {relevant_info[0]['text']})"
+#### Before Cat Recalls Declarative Memories
+**Purpose**: Control document memory retrieval.
 
-        # Modify the user message
-        modified_message = user_message + " - Please answer in a friendly tone."
-        cat.log(f"Original message: {user_message}, Modified: {modified_message}")
-        return {"user_message": modified_message} # Return the modified message
-    ```
-    * **`cat` population change:** You might use `cat.memory` to retrieve context. The primary change is to the `user_message` that will be sent to the LLM.
+**Use Cases**:
+- Document access permissions
+- Content filtering
+- Knowledge base selection
 
-#### D. `after_llm_execution(message, cat, **kwargs)`
+#### Before Cat Recalls Procedural Memories
+**Purpose**: Control tool/action memory retrieval.
 
-* **When it runs:** After the LLM has processed the input and generated a response.
-* **Purpose:** Modify the LLM's response, extract information, or trigger actions based on the response.
-* **`cat` at this stage:**
-    * `message` (usually a dictionary) contains the LLM's raw response.
-    * `cat` allows you to save this response or related extracted info to memory.
-* **Example:**
-    ```python
-    # In your plugin's main.py
-    def after_llm_execution(message, cat, **kwargs):
-        llm_response_text = message["content"]
-        cat.log(f"LLM responded: {llm_response_text}")
+**Use Cases**:
+- Tool permissions management
+- Action filtering based on context
+- Security restrictions
 
-        # If LLM mentions a specific keyword, store it
-        if "Cheshire Cat" in llm_response_text:
-            cat.memory.vectors.get_declarative_memory_instance().add_point(
-                text=f"LLM mentioned 'Cheshire Cat' in response: {llm_response_text}",
-                metadata={"source": "llm_response_trigger"}
-            )
+### After Cat Recalls Memories
+**Purpose**: Process and potentially modify recalled memories before use.
 
-        # Modify the response before sending to user
-        modified_response = llm_response_text + " - Meow! 🐾"
-        message["content"] = modified_response
-        return message # Return the modified message object
-    ```
-    * **`cat` population change:** You might populate `cat.memory` with insights from the LLM's response. The `message` content is modified.
+**Use Cases**:
+- Memory content filtering
+- Relevance scoring adjustment
+- Content summarization
 
-#### E. `before_cat_sends_message(message, cat, **kwargs)`
+**Example**:
+```python
+@hook
+def after_cat_recalls_memories(memory_results, cat):
+    # Filter sensitive information
+    filtered_results = filter_sensitive_content(memory_results)
+    
+    # Add relevance metadata
+    for result in filtered_results:
+        result["relevance_score"] = calculate_relevance(result, cat.working_memory)
+    
+    return filtered_results
+```
 
-* **When it runs:** Just before the final message is sent to the user.
-* **Purpose:** Last chance to modify the message, add attachments, or log the final output.
-* **`cat` at this stage:**
-    * `message` (usually a dictionary) is the final response object to be sent.
-* **Example:**
-    ```python
-    # In your plugin's main.py
-    def before_cat_sends_message(message, cat, **kwargs):
-        final_text = message["content"]
-        cat.log(f"Final message to user: {final_text}")
-        # Ensure a friendly closing
-        if not final_text.endswith("🐾"):
-            final_text += " Have a purrfect day! 🐾"
-        message["content"] = final_text
-        return message
-    ```
-    * **`cat` population change:** The `message` content can be altered.
+### Before Cat Stores Episodic Memories
+**Purpose**: Modify conversation data before storage.
 
-#### F. `after_cat_reads_message(message, cat, **kwargs)`
+**Use Cases**:
+- Data sanitization
+- Privacy filtering
+- Metadata addition
+- Storage optimization
 
-* **When it runs:** After the user's message is received by the ccat but before any significant processing (like `before_llm_execution`).
-* **Purpose:** Early interception of user input, perhaps for logging, sanitization, or routing before it hits the main LLM chain.
-* **`cat` at this stage:**
-    * `message` is the raw incoming message from the user.
-* **Example:**
-    ```python
-    # In your plugin's main.py
-    def after_cat_reads_message(message, cat, **kwargs):
-        user_input = message["content"]
-        cat.log(f"User said: {user_input}")
-        # Example: If user says "help", inject a known good help query to memory for context
-        if "help" in user_input.lower():
-            cat.working_memory.append({"role": "system", "content": "User is asking for help. Provide general assistance."})
-        return message # Must return the message
-    ```
-    * **`cat` population change:** `cat.working_memory` might be updated with system messages or context based on the user's raw input.
+### Before Cat Sends Message
+**Purpose**: Final message processing before delivery.
 
-#### G. `before_rabbit_hole_stores_file(file_bytes, cat, **kwargs)` / `before_rabbit_hole_stores_url(url, cat, **kwargs)` / `before_rabbit_hole_stores_text(text, cat, **kwargs)`
-
-* **When it runs:** Before a file, URL, or text is processed and stored by the Rabbit Hole.
-* **Purpose:** Modify the content before ingestion, prevent storage, or add metadata.
-* **`cat` at this stage:**
-    * Provides access to memory if you need to check something before storing.
-    * The respective content (`file_bytes`, `url`, `text`) is available.
-* **Example (`before_rabbit_hole_stores_url`):**
-    ```python
-    # In your plugin's main.py
-    def before_rabbit_hole_stores_url(url, cat, **kwargs):
-        cat.log(f"Rabbit Hole is about to store URL: {url}")
-        if "internal-docs.mycompany.com" in url:
-            # Allow storing
-            # You could also modify the URL or add specific metadata instructions here
-            # kwargs["metadata"] = {"source_type": "internal"}
-            return {"url": url, "kwargs": kwargs} # Pass it on
-        else:
-            cat.log(f"Skipping non-internal URL: {url}")
-            cat.send_ws_message(content=f"Sorry, I can only process URLs from internal-docs.mycompany.com", msg_type="error")
-            return None # Returning None prevents storage
-    ```
-    * **`cat` population change:** No direct change to `cat`'s structure. You control *what* goes into `cat.memory` via the Rabbit Hole.
-
-#### H. `after_rabbit_hole_digestion(docs, cat, **kwargs)`
-
-* **When it runs:** After the Rabbit Hole has processed content (chunked, embedded) and stored it in declarative memory.
-* **Purpose:** Access the processed documents (chunks), perform actions based on successful ingestion (e.g., notify user, trigger further analysis).
-* **`cat` at this stage:**
-    * `docs` is a list of document chunks that were just ingested.
-    * `cat.memory` now contains these new chunks.
-* **Example:**
-    ```python
-    # In your plugin's main.py
-    def after_rabbit_hole_digestion(docs, cat, **kwargs):
-        cat.log(f"Rabbit Hole finished digesting. {len(docs)} document chunks were added to memory.")
-        # Example: Send a notification to the user
-        source_name = "the provided content"
-        if docs and docs[0].metadata and "source" in docs[0].metadata:
-            source_name = docs[0].metadata["source"]
-
-        cat.send_ws_message(content=f"I've finished learning from {source_name}! Ask me anything.", msg_type="notification")
-
-        # You could also trigger another process, e.g., summarize the new docs
-        # combined_text = " ".join([doc.page_content for doc in docs])
-        # summary = cat.llm.summarize_text(combined_text)
-        # cat.memory.vectors.get_declarative_memory_instance().add_point(
-        # text=f"Summary of recently ingested content ({source_name}): {summary}",
-        # metadata={"source": "post_digestion_summary"}
-        # )
-        return docs # Must return the docs
-    ```
-    * **`cat` population change:** `cat.memory` (specifically declarative memory) is now populated with the new information from the digested `docs`. You might further populate memory with summaries or analyses derived from these docs using `cat.llm`.
+**Use Cases**:
+- Response filtering
+- Format conversion
+- Analytics tracking
+- Rate limiting
 
 ---
 
-### 4. Core Plugin Functions: Tools
+## Agent Intervention Points
 
-Tools are functions your plugin exposes that the AI can decide to use to accomplish a task. The LLM, when it deems appropriate, will "call" your tool.
+Agent hooks control the AI agent's behavior and prompt construction.
 
-#### `tool_example(tool_input, cat, **kwargs)`
+### Before Agent Starts
+**Purpose**: Prepare agent input and configuration.
 
-* **When it runs:** When the LLM decides this tool is needed to answer a user query or perform an action.
-* **Purpose:** Execute a specific action (e.g., fetch data from an API, perform a calculation, interact with a device).
-* **`cat` at this stage:**
-    * Fully available. You can use `cat.llm` for sub-tasks, `cat.memory` to store results or get context, `cat.send_ws_message` to give feedback.
-    * `tool_input` is the string or structured data the LLM provides to your tool.
-* **Defining a Tool:**
-    You define tools in your plugin's `main.py` by decorating a function with `@tool`.
-    ```python
-    from cat.mad_hatter.decorators import tool
+**Use Cases**:
+- Dynamic prompt modification
+- Context injection
+- Agent configuration tuning
 
-    @tool(
-        name="GetStockPrice", # How the LLM refers to it
-        description="Fetches the current stock price for a given company ticker symbol. Input should be the ticker symbol (e.g., AAPL).",
-        # 'json_schema' can be used for more complex input structures
-    )
-    def get_stock_price_tool(ticker_symbol: str, cat):
-        cat.log(f"Tool 'GetStockPrice' called with ticker: {ticker_symbol}")
-        # In a real scenario, you'd call an API here
-        # For example: price = some_stock_api.get_price(ticker_symbol)
-        if ticker_symbol == "AAPL":
-            price_info = f"The current price of AAPL is $170.34."
-        elif ticker_symbol == "GOOGL":
-            price_info = f"The current price of GOOGL is $155.72."
-        else:
-            price_info = f"Sorry, I don't have data for {ticker_symbol}."
+**Example**:
+```python
+@hook
+def before_agent_starts(agent_input, cat):
+    # Add current time context
+    agent_input["current_time"] = datetime.now().isoformat()
+    
+    # Add user preferences
+    agent_input["user_preferences"] = cat.working_memory.get("preferences", {})
+    
+    return agent_input
+```
 
-        # Optionally, store this interaction in memory
-        cat.memory.vectors.get_declarative_memory_instance().add_point(
-            text=f"Stock price for {ticker_symbol} was queried. Result: {price_info}",
-            metadata={"source": "GetStockPriceTool", "ticker": ticker_symbol}
-        )
-        # The tool should return a string that the LLM can use in its response to the user
-        return price_info
-    ```
-* **`cat` population change:**
-    * You might use `cat` to fetch credentials for an API call (via `cat.get_plugin_config`).
-    * You can store the result of the tool's execution or metadata about its usage in `cat.memory`.
-    * The tool's *output* (the return value) is sent back to the LLM, which then incorporates it into its response to the user. The `cat` object itself isn't directly "populated" by the tool in terms of its structure, but its *memories can be updated by the tool's actions*.
+### Agent Fast Reply
+**Purpose**: Provide immediate responses without full pipeline execution.
+
+**Use Cases**:
+- Cached response delivery
+- Simple query handling
+- Emergency responses
+- Performance optimization
+
+**Example**:
+```python
+@hook
+def agent_fast_reply(fast_reply, cat):
+    query = cat.working_memory.get("user_message", "")
+    
+    # Handle simple greetings
+    if query.lower() in ["hi", "hello", "hey"]:
+        return {
+            "output": "Hello! How can I help you today?",
+            "return_direct": True
+        }
+    
+    # Check for cached responses
+    cached_response = check_cache(query)
+    if cached_response:
+        return {
+            "output": cached_response,
+            "return_direct": True
+        }
+    
+    return fast_reply
+```
+
+### Agent Prompt Components
+
+#### Agent Prompt Prefix
+**Purpose**: Customize the personality and system prompt.
+
+**Use Cases**:
+- Dynamic personality adjustment
+- Context-aware behavior modification
+- Role-based prompting
+
+#### Agent Prompt Suffix
+**Purpose**: Modify the prompt suffix with memories and conversation history.
+
+**Use Cases**:
+- Memory presentation formatting
+- Context organization
+- Instruction clarification
+
+#### Agent Prompt Instructions
+**Purpose**: Customize reasoning and instruction prompts.
+
+**Use Cases**:
+- Task-specific instruction modification
+- Reasoning strategy adjustment
+- Output format specification
+
+### Agent Allowed Tools
+**Purpose**: Control which tools are available to the agent.
+
+**Use Cases**:
+- Security restrictions
+- Context-based tool filtering
+- User permission management
+
+**Example**:
+```python
+@hook
+def agent_allowed_tools(tools, cat):
+    user_role = cat.working_memory.get("user_role", "guest")
+    
+    # Filter tools based on user role
+    if user_role == "admin":
+        return tools  # Admin gets all tools
+    elif user_role == "user":
+        # Regular users get limited tools
+        allowed_tool_names = ["search", "calculator", "weather"]
+        return [tool for tool in tools if tool.name in allowed_tool_names]
+    else:
+        # Guests get minimal tools
+        return [tool for tool in tools if tool.name == "search"]
+```
 
 ---
 
-### 5. Timeline Example: What Happens to `cat`?
+## Rabbit Hole Intervention Points
 
-Let's trace a simple interaction:
+Rabbit Hole hooks control document processing and memory ingestion.
 
-1.  **Startup:**
-    * `agent_init(cat)` runs: `cat` used to load plugin config.
-    * `after_cat_bootstrap(cat)` runs: `cat.llm` used to summarize plugin purpose, result stored in `cat.memory.vectors`.
-        * *`cat.memory` now contains initial bootstrap info.*
+### Before Rabbit Hole Insert Memory
+**Purpose**: Modify documents before insertion into declarative memory.
 
-2.  **User uploads a document ("my_company_policy.pdf"):**
-    * `before_rabbit_hole_stores_file(file_bytes, cat, **kwargs)` might run: Plugin could check file type or add metadata.
-    * Rabbit Hole processes the PDF.
-    * `after_rabbit_hole_digestion(docs, cat, **kwargs)` runs:
-        * `docs` contains chunks from "my\_company\_policy.pdf".
-        * `cat.send_ws_message` used to notify user of completion.
-        * Optionally, `cat.llm` used to summarize the new docs and store summary in `cat.memory.vectors`.
-        * *`cat.memory.vectors` is significantly populated with content from "my\_company\_policy.pdf" and potentially its summary.*
+**Use Cases**:
+- Content validation
+- Metadata addition
+- Access control setup
 
-3.  **User asks: "What is the vacation policy according to my_company_policy.pdf?"**
-    * `after_cat_reads_message(message, cat, **kwargs)` runs: Logs the input. `cat.working_memory` might be updated if specific keywords trigger actions.
-    * `before_llm_execution(user_message, cat, **kwargs)` runs:
-        * The original `user_message` is "What is the vacation policy according to my\_company\_policy.pdf?".
-        * Plugin might add context from `cat.memory` if relevant (e.g., "Remember to check the most recent version of the policy.").
-        * Returns modified `user_message` to LLM.
-    * **LLM Processing:**
-        * The LLM receives the (possibly modified) user query.
-        * The ccat framework automatically performs a similarity search in `cat.memory.vectors` using the user's query. Relevant chunks from "my\_company\_policy.pdf" are retrieved and provided to the LLM as context.
-        * LLM formulates an answer based on the query and the retrieved context.
-    * `after_llm_execution(message, cat, **kwargs)` runs:
-        * `message` contains the LLM's answer (e.g., "The vacation policy states...").
-        * Plugin might log this answer or store a fact from it in `cat.memory.vectors`.
-        * Returns (possibly modified) `message`.
-    * `before_cat_sends_message(message, cat, **kwargs)` runs:
-        * Final chance to tweak the `message` before it goes to the user.
-        * Adds a friendly closing.
-    * **User receives the answer.**
+### Text Processing Hooks
 
-4.  **User asks: "What's the stock price for AAPL?"**
-    * (Similar `after_cat_reads_message`, `before_llm_execution` flow)
-    * **LLM Processing:**
-        * LLM recognizes the need for real-time data not in its memory.
-        * It identifies the `GetStockPrice` tool as suitable.
-        * LLM decides to call `GetStockPrice` with input "AAPL".
-    * **Tool Execution:** `get_stock_price_tool("AAPL", cat)` runs:
-        * `cat.log` used.
-        * Tool simulates API call.
-        * `cat.memory.vectors.get_declarative_memory_instance().add_point(...)` stores info about this query.
-        * Returns "The current price of AAPL is $170.34."
-        * *`cat.memory.vectors` now contains a record of this stock query.*
-    * **LLM Processing resumes:**
-        * LLM receives "The current price of AAPL is $170.34." from the tool.
-        * LLM incorporates this into a natural language response.
-    * (Similar `after_llm_execution`, `before_cat_sends_message` flow)
-    * **User receives the stock price.**
+#### Before Rabbit Hole Splits Text
+**Purpose**: Modify text before chunking.
 
-Throughout this timeline, the `cat` object itself doesn't fundamentally change its *structure* (the methods and attributes available, like `cat.llm`, `cat.memory`, remain consistent). However, the *data it manages*, particularly within `cat.memory` (both working and declarative) and the information passed through it (user messages, LLM responses), is constantly changing and being populated by the different stages and plugin functions. Your plugin uses the stable interface of the `cat` object to interact with this dynamic flow of information.
+**Use Cases**:
+- Text preprocessing
+- Format normalization
+- Content enhancement
+
+#### After Rabbit Hole Splitted Text
+**Purpose**: Process text chunks after splitting.
+
+**Use Cases**:
+- Chunk validation
+- Metadata addition
+- Quality filtering
+
+**Example**:
+```python
+@hook
+def after_rabbit_hole_splitted_text(chunks, cat):
+    processed_chunks = []
+    
+    for chunk in chunks:
+        # Add metadata to each chunk
+        chunk.metadata.update({
+            "processed_at": datetime.now().isoformat(),
+            "chunk_quality": assess_chunk_quality(chunk.text),
+            "language": detect_language(chunk.text)
+        })
+        
+        # Filter out low-quality chunks
+        if chunk.metadata["chunk_quality"] > 0.5:
+            processed_chunks.append(chunk)
+    
+    return processed_chunks
+```
+
+### Document Storage Hooks
+
+#### Before Rabbit Hole Stores Documents
+**Purpose**: Intervene before starting the document ingestion pipeline.
+
+#### After Rabbit Hole Stores Documents
+**Purpose**: Execute actions after document ingestion completion.
+
+### Component Instantiation Hooks
+
+#### Rabbit Hole Instantiates Parsers
+**Purpose**: Hook available parsers for file ingestion.
+
+**Use Cases**:
+- Custom parser registration
+- Parser configuration
+- Format-specific handling
+
+#### Rabbit Hole Instantiates Splitter
+**Purpose**: Hook the text splitter component.
+
+**Use Cases**:
+- Custom splitting strategies
+- Splitter configuration
+- Content-aware chunking
 
 ---
 
-This document should provide a good starting point for both an AI and a junior developer to understand how to work with ccat plugins and the `cat` object!
+## Plugin Intervention Points
+
+Plugin hooks manage the plugin lifecycle and configuration.
+
+### Plugin Lifecycle Hooks
+
+#### Activated
+**Purpose**: Execute actions when a plugin is enabled.
+
+**Use Cases**:
+- Plugin initialization
+- Resource allocation
+- Configuration validation
+
+#### Deactivated
+**Purpose**: Execute actions when a plugin is disabled.
+
+**Use Cases**:
+- Cleanup operations
+- Resource deallocation
+- State preservation
+
+### Plugin Settings Hooks
+
+#### Settings Schema
+**Purpose**: Override plugin settings schema retrieval.
+
+#### Settings Model
+**Purpose**: Override plugin settings model retrieval.
+
+#### Load Settings
+**Purpose**: Customize how plugin settings are loaded.
+
+#### Save Settings
+**Purpose**: Customize how plugin settings are saved.
+
+**Example**:
+```python
+@hook
+def plugin_save_settings(settings, plugin_id, cat):
+    # Add validation before saving
+    validated_settings = validate_plugin_settings(settings, plugin_id)
+    
+    # Add audit trail
+    audit_log = {
+        "timestamp": datetime.now().isoformat(),
+        "user_id": cat.user_id,
+        "action": "settings_updated",
+        "plugin_id": plugin_id
+    }
+    
+    # Save to custom location
+    save_to_custom_storage(validated_settings, audit_log)
+    
+    return validated_settings
+```
+
+---
+
+## Factory Intervention Points
+
+Factory hooks control component configuration and settings retrieval.
+
+### Factory Allowed LLMs
+**Purpose**: Intervene before retrieving LLM settings.
+
+**Use Cases**:
+- LLM selection based on context
+- Cost optimization
+- Performance tuning
+
+### Factory Allowed Embedders
+**Purpose**: Intervene before retrieving embedder settings.
+
+**Use Cases**:
+- Embedder selection optimization
+- Multi-language support
+- Performance considerations
+
+### Factory Allowed AuthHandlers
+**Purpose**: Intervene before retrieving authentication handler settings.
+
+**Use Cases**:
+- Dynamic authentication strategy
+- Security policy enforcement
+- Multi-tenant support
+
+**Example**:
+```python
+@hook
+def factory_allowed_llms(llm_settings, cat):
+    user_tier = cat.working_memory.get("user_tier", "free")
+    
+    if user_tier == "premium":
+        # Premium users get access to advanced models
+        return llm_settings
+    else:
+        # Free users get limited model access
+        filtered_settings = [
+            setting for setting in llm_settings 
+            if setting.get("tier", "free") == "free"
+        ]
+        return filtered_settings
+```
+
+---
+
+## Best Practices and Tips
+
+### 1. Hook Implementation Guidelines
+- Always return the expected data type from hooks
+- Handle exceptions gracefully to prevent system crashes
+- Use logging for debugging and monitoring
+- Keep hook functions lightweight and efficient
+
+### 2. Performance Considerations
+- Minimize processing time in frequently called hooks
+- Use caching where appropriate
+- Avoid blocking operations in critical path hooks
+- Monitor hook execution times
+
+### 3. Security Best Practices
+- Validate all inputs in hooks
+- Implement proper access controls
+- Sanitize data before processing
+- Log security-relevant events
+
+### 4. Development Workflow
+- Test hooks in isolation before integration
+- Use version control for hook implementations
+- Document hook behavior and dependencies
+- Implement rollback strategies for critical hooks
+
+### 5. Common Patterns
+- **Middleware Pattern**: Use hooks to implement cross-cutting concerns
+- **Chain of Responsibility**: Allow multiple hooks to process the same event
+- **Observer Pattern**: Use hooks for event notification and logging
+- **Decorator Pattern**: Enhance existing functionality without modification
+
+---
+
+## Conclusion
+
+The CheshireCat framework's intervention points provide powerful customization capabilities for AI agent behavior. By understanding and effectively utilizing these hooks, developers can create sophisticated, context-aware, and highly customized AI applications.
+
+Remember to always consider the impact of your interventions on system performance and stability. Start with simple implementations and gradually add complexity as needed. The modular nature of these hooks allows for incremental development and easy maintenance of your customizations.
